@@ -8,15 +8,30 @@
 #include <string>
 
 
-class IIIjsonParser
-{
+enum jsonValueType {
+    null,
+    string,
+    integer,
+    boolean,
+    array,
+    json
+};
+
+class jsonValue {
 private:
 
 public:
-    IIIjsonParser (const std::string& file_name);
-    IIIjsonParser (const IIIjsonParser& parser) = delete;
-    IIIjsonParser& operator= (const IIIjsonParser& parser) = delete;
-    ~IIIjsonParser ();
+
+};
+
+class json {
+private:
+    std::map<jsonValue, jsonValue> obj;
+public:
+    json (const std::string& file_name);
+    json (const json& parser) = delete;
+    json& operator= (const json& parser) = delete;
+    json ();
 };
 
 
