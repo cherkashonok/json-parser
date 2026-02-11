@@ -10,7 +10,6 @@
 
 class JSON;
 class jsonValue;
-enum jsonValueType;
 
 
 enum jsonValueType {
