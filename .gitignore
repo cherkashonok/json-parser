@@ -1,3 +1,5 @@
 example.json
-*.exe
+tasks.txt
+app
 tmp
+test
