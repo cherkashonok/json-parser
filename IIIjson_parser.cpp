@@ -1,4 +1,7 @@
 #include "IIIjson_parser.hpp"
+// #include <boost/spirit/include/qi.hpp>
+#include <iostream>
+// namespace qi = boost::spirit::qi;
 
 
 // class jsonValue 
@@ -11,6 +14,11 @@ void* jsonValue::getValue<void*>() const {
 template<> 
 std::string jsonValue::getValue<std::string>() const {
     return j1; 
+}
+
+template<>
+double jsonValue::getValue<double>() const {
+    return j2;
 }
 
 template<> 
@@ -40,13 +48,19 @@ jsonValue::jsonValue<std::string>(const std::string& val) {
     j1 = val;
 }
 
+template<>
+jsonValue::jsonValue<double>(const double& val) {
+    type = number;
+    j2 = val;
+}
+
 template<> 
 jsonValue::jsonValue<int>(const int& val) {
     type = number;
     j2 = val;
 }
 
-template<> 
+template<>
 jsonValue::jsonValue<bool>(const bool& val) {
     type = boolean;
     j3 = val;
@@ -69,10 +83,14 @@ jsonValue::jsonValue(JSON* val) {
 }
 
 // остальной функционал jsonValue
+jsonValueType jsonValue::getType() const {
+    return type;
+}
+
 jsonValue& jsonValue::operator= (const jsonValue& right) {
     if (this == &right)
         return *this;
-    
+
     if (right.type == null) {
         type = right.type;
     } else if (right.type == string) {
@@ -91,12 +109,26 @@ jsonValue& jsonValue::operator= (const jsonValue& right) {
         type = right.type;
         j5 = right.j5;
     }
-    
+
     return *this;
 }
 
 bool jsonValue::operator< (const jsonValue& right) const {
-    return sizeof(*this) < sizeof(right);
+    if (this->type != right.type)
+        return this->type < right.type;
+
+    if (this->type == string)
+        return this->j1 < right.j1;
+    if (this->type == number)
+        return this->j2 < right.j2;
+    if (this->type == boolean)
+        return this->j3 < right.j3;
+    if (this->type == array)
+        return this->j4 < right.j4;
+    if (this->type == json)
+        return this->j5->getObject() < right.j5->getObject();
+
+    return true; // for null case
 }
 
 bool jsonValue::operator== (const jsonValue& right) const {
@@ -108,38 +140,128 @@ bool jsonValue::operator== (const jsonValue& right) const {
     if (type == boolean) return j3 == right.j3;
     if (type == array) return   j4 == right.j4;
     if (type == json) return    j5 == right.j5;
+
+    throw "not initialized object";
 }
 
 
 // class JSON
-JSON::JSON (const std::string& file_name) {
+JSON::JSON () {
+    std::cout << this << " had been constructed\n";
 
+    file_name = "";
+}
+JSON::JSON (const std::string& file_name) : file_name(file_name) {
+    std::cout << this << " had been constructed\n";
+
+    file.open(file_name, std::ios::out | std::ios::in);
+    if (!file.is_open())
+        throw std::runtime_error("JSON file could not be opened");
+}
+JSON::~JSON () {
+    file.close();
+
+    std::cout << this << " had been destroyed\n";
 }
 
-void JSON::get_JSON_from_file(const std::string& name) {
+// void JSON::get_JSON(const std::string& name) {
+//     if (!file_name.empty() || name != file_name) {
+//         if (file.is_open())
+//             file.close();
+//
+//         file_name = name;
+//         file.open(name, std::ios::app | std::ios::out | std::ios::in);
+//
+//         if (!file.is_open())
+//             throw std::runtime_error("JSON file could not be opened");
+//     }
+// }
 
+void JSON::write_jsonValue(const std::string& name, const jsonValue* val_obj) {
+    if (val_obj->getType() == null)
+        file << "null";
+    if (val_obj->getType() == string)
+        file << '"' << val_obj->getValue<std::string>() << '"';
+    if (val_obj->getType() == number)
+        file << val_obj->getValue<double>();
+    if (val_obj->getType() == boolean)
+        file << std::boolalpha << val_obj->getValue<bool>();
+    if (val_obj->getType() == json)
+        val_obj->getValue<JSON*>()->write_JSON(name);
+
+    if (val_obj->getType() == array) {
+        auto it = val_obj->getValue<std::vector<jsonValue>>().begin();
+        auto end = val_obj->getValue<std::vector<jsonValue>>().end();
+
+        file << "[ ";
+        for (; it != end; ++it) {
+            write_jsonValue(name, &(*it));
+            if (it != end-1)
+                file << ", ";
+        }
+        file << " ]";
+    }
 }
 
-void JSON::write_JSON_to_file(const std::string& name) {
+void JSON::write_JSON(const std::string& name) {
+    if (!file_name.empty() || name != file_name) {
+        if (file.is_open())
+            file.close();
 
+        file_name = name;
+        file.open(name, std::ios::app | std::ios::out | std::ios::in);
+
+        if (!file.is_open())
+            throw std::runtime_error("JSON file could not be opened");
+    }
+
+    file << "{\n\t";
+    for (auto it = obj.begin(); it != obj.end();) {
+        jsonValue v1 = it->first; // ?
+        write_jsonValue(name, &v1); // ?
+        file << " : ";
+        write_jsonValue(name, &it->second); // ?
+
+        if (++it != obj.end())
+            file << ",\n\t";
+        else
+            file << "\n";
+    }
+    file << "}";
 }
 
+const std::map<jsonValue, jsonValue>& JSON::getObject() const {
+    return obj;
+}
 
 
 int main () {
-    jsonValue t1(30);
-    std::cout << t1.getValue<int>() << "\n";
-
-
     JSON example;
 
-    example.get_JSON_from_file("example.json");
+    example["fd"] = false;
+    example["12424"] = 12424;
+    example["sgdgsd"] = "gerr";
 
-    example[30] = "gerr";
-    example["fd"] = true;
-    example[true] = 12424;
+    // std::cout << example["sgdgsd"].getValue<std::string>() << std::endl;
+    // std::cout << example["fd"].getValue<bool>() << std::endl;
+    // std::cout << example["12424"].getValue<int>() << std::endl;
+    //
+    // std::cout << &example << " had " << example.getObject().size() << " elements\n";
 
-    std::cout << example[30].getValue<std::string>() << "\n";
-    std::cout << example["fd"].getValue<bool>() << "\n";
-    std::cout << example[true].getValue<int>() << "\n";
+    example.write_JSON("./example1.json");
+
+
+
+
+
+
+
+    // std::string s;
+    // std::getline(std::cin, s);
+    // auto it = s.begin();
+    // bool match = qi::parse(it, s.end(), qi::double_);
+    // std::cout << std::boolalpha << match << std::endl;
+    // if (it != s.end()) {
+    //     std::cout << std::string(it, s.end()) << std::endl;
+    // }
 }
