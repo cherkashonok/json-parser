@@ -7,41 +7,41 @@
 // class jsonValue 
 // реализация getValue
 template<> 
-void* jsonValue::getValue<void*>() const {
+void* jsonValue::getValue<void*>() const noexcept {
     return nullptr; 
 }
 
 template<> 
-std::string jsonValue::getValue<std::string>() const {
+std::string jsonValue::getValue<std::string>() const noexcept {
     return j1; 
 }
 
 template<>
-double jsonValue::getValue<double>() const {
+double jsonValue::getValue<double>() const noexcept {
     return j2;
 }
 
 template<> 
-int jsonValue::getValue<int>() const {
+int jsonValue::getValue<int>() const noexcept {
     return j2; 
 }
 
 template<> 
-bool jsonValue::getValue<bool>() const {
+bool jsonValue::getValue<bool>() const noexcept {
     return j3; 
 }
 
 template<> 
-std::vector<jsonValue> jsonValue::getValue<std::vector<jsonValue>>() const {
+std::vector<jsonValue> jsonValue::getValue<std::vector<jsonValue>>() const noexcept {
     return j4; 
 }
 
 template<> 
-JSON* jsonValue::getValue<JSON*>() const {
+JSON* jsonValue::getValue<JSON*>() const noexcept {
     return j5; 
 }
 
-// реализация конструкторов
+// реализация конструкторов и декструктора
 template<> 
 jsonValue::jsonValue<std::string>(const std::string& val) {
     type = string;
@@ -83,31 +83,48 @@ jsonValue::jsonValue(JSON* val) {
 }
 
 // остальной функционал jsonValue
-jsonValueType jsonValue::getType() const {
+jsonValueType jsonValue::getType() const noexcept {
     return type;
+}
+void jsonValue::printType() const noexcept {
+    if (type == null) std::cout << this << " type is 'null'" << std::endl;
+    if (type == boolean) std::cout << this << " type is 'boolean'" << std::endl;
+    if (type == number) std::cout << this << " type is 'number'" << std::endl;
+    if (type == string) std::cout << this << " type is 'string'" << std::endl;
+    if (type == array) std::cout << this << " type is 'array'" << std::endl;
+    if (type == json) std::cout << this << " type is 'json'" << std::endl;
+    if (type == trash_value) std::cout << this << " is not initialized" << std::endl;
+}
+
+jsonValue& jsonValue::operator[] (const jsonValue& x) const {
+    if (type != json)
+        throw std::runtime_error("jsonValue must have json type");
+
+    if (x.getType() != string)
+        throw std::runtime_error("key must be a string");
+    return this->getValue<JSON*>()->operator[](x);
 }
 
 jsonValue& jsonValue::operator= (const jsonValue& right) {
-    if (this == &right)
-        return *this;
-
-    if (right.type == null) {
-        type = right.type;
-    } else if (right.type == string) {
-        type = right.type;
-        j1 = right.j1;
-    } else if (right.type == number) {
-        type = right.type;
-        j2 = right.j2;
-    } else if (right.type == boolean) {
-        type = right.type;
-        j3 = right.j3;
-    } else if (right.type == array) {
-        type = right.type;
-        j4 = right.j4;
-    } else if (right.type == json) {
-        type = right.type;
-        j5 = right.j5;
+    if (this != &right) {
+        if (right.type == null) {
+            type = right.type;
+        } else if (right.type == string) {
+            type = right.type;
+            j1 = right.j1;
+        } else if (right.type == number) {
+            type = right.type;
+            j2 = right.j2;
+        } else if (right.type == boolean) {
+            type = right.type;
+            j3 = right.j3;
+        } else if (right.type == array) {
+            type = right.type;
+            j4 = right.j4;
+        } else if (right.type == json) {
+            type = right.type;
+            j5 = right.j5;
+        }
     }
 
     return *this;
@@ -141,27 +158,28 @@ bool jsonValue::operator== (const jsonValue& right) const {
     if (type == array) return   j4 == right.j4;
     if (type == json) return    j5 == right.j5;
 
-    throw "not initialized object";
+    throw std::invalid_argument("argument is not initialized");
 }
 
 
 // class JSON
-JSON::JSON () {
-    std::cout << this << " had been constructed\n";
+JSON::~JSON () {}
 
+JSON::JSON () {
     file_name = "";
 }
-JSON::JSON (const std::string& file_name) : file_name(file_name) {
-    std::cout << this << " had been constructed\n";
-
+JSON::JSON (const std::string& file_name)  {
+    JSON::file_name = file_name;
     file.open(file_name, std::ios::out | std::ios::in);
     if (!file.is_open())
         throw std::runtime_error("JSON file could not be opened");
 }
-JSON::~JSON () {
-    file.close();
 
-    std::cout << this << " had been destroyed\n";
+jsonValue& JSON::operator[] (const jsonValue& x) {
+    if (x.getType() != string)
+        throw std::runtime_error("key must be a string");
+
+    return obj[x];
 }
 
 // void JSON::get_JSON(const std::string& name) {
@@ -177,7 +195,7 @@ JSON::~JSON () {
 //     }
 // }
 
-void JSON::write_jsonValue(const std::string& name, const jsonValue* val_obj) {
+void JSON::writeJsonValue(const std::string& name, const jsonValue* val_obj) {
     if (val_obj->getType() == null)
         file << "null";
     if (val_obj->getType() == string)
@@ -187,23 +205,22 @@ void JSON::write_jsonValue(const std::string& name, const jsonValue* val_obj) {
     if (val_obj->getType() == boolean)
         file << std::boolalpha << val_obj->getValue<bool>();
     if (val_obj->getType() == json)
-        val_obj->getValue<JSON*>()->write_JSON(name);
+        val_obj->getValue<JSON*>()->writeJSON(name);
 
     if (val_obj->getType() == array) {
-        auto it = val_obj->getValue<std::vector<jsonValue>>().begin();
-        auto end = val_obj->getValue<std::vector<jsonValue>>().end();
+        auto&& o = val_obj->getValue<std::vector<jsonValue>>();
 
         file << "[ ";
-        for (; it != end; ++it) {
-            write_jsonValue(name, &(*it));
-            if (it != end-1)
+        for (auto it = o.begin(); it != o.end(); ++it) {
+            writeJsonValue(name, &(*it));
+            if (it != o.end()-1)
                 file << ", ";
         }
         file << " ]";
     }
 }
 
-void JSON::write_JSON(const std::string& name) {
+void JSON::writeJSON(const std::string& name) {
     if (!file_name.empty() || name != file_name) {
         if (file.is_open())
             file.close();
@@ -217,10 +234,9 @@ void JSON::write_JSON(const std::string& name) {
 
     file << "{\n\t";
     for (auto it = obj.begin(); it != obj.end();) {
-        jsonValue v1 = it->first; // ?
-        write_jsonValue(name, &v1); // ?
+        writeJsonValue(name, &it->first);
         file << " : ";
-        write_jsonValue(name, &it->second); // ?
+        writeJsonValue(name, &it->second);
 
         if (++it != obj.end())
             file << ",\n\t";
@@ -230,7 +246,7 @@ void JSON::write_JSON(const std::string& name) {
     file << "}";
 }
 
-const std::map<jsonValue, jsonValue>& JSON::getObject() const {
+const std::map<jsonValue, jsonValue>& JSON::getObject() const noexcept {
     return obj;
 }
 
@@ -238,23 +254,24 @@ const std::map<jsonValue, jsonValue>& JSON::getObject() const {
 int main () {
     JSON example;
 
-    example["fd"] = false;
-    example["12424"] = 12424;
-    example["sgdgsd"] = "gerr";
+    example["a"] = false;
+    example["b"] = 12424;
+    example["c"] = "germany";
 
-    // std::cout << example["sgdgsd"].getValue<std::string>() << std::endl;
-    // std::cout << example["fd"].getValue<bool>() << std::endl;
-    // std::cout << example["12424"].getValue<int>() << std::endl;
+    // настоящая головная боль:
+    example["d"] = std::vector<jsonValue>{123, 143, 154};
+    example["e"] = new JSON;
+    example["e"]["1"] = 20;
+    example["e"]["2"] = new JSON;
+    example["e"]["2"]["v"] = true;
+
+
     //
-    // std::cout << &example << " had " << example.getObject().size() << " elements\n";
-
-    example.write_JSON("./example1.json");
-
-
-
-
-
-
+    // example["d"].printType();
+    // example["c"].printType();
+    // example["e"].printType();
+    // example["e"]["1"].printType();
+    example.writeJSON("./example1.json");
 
     // std::string s;
     // std::getline(std::cin, s);

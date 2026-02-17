@@ -11,25 +11,29 @@ class JSON;
 class jsonValue;
 
 enum jsonValueType {
-    null,
+    null=1,
     boolean,
     number,
     string,
     array,
-    json
+    json,
+    trash_value
 };
 
 
 class jsonValue {
 public:
-    template<class T> jsonValue(const T& val);
+    jsonValue() : type(trash_value) {}
     jsonValue(const char* val);
     jsonValue(JSON* val);
-    jsonValue() {}
+    template<class T> jsonValue(const T& val);
 
-    template<class T> T getValue() const;
-    jsonValueType getType() const;
+    template<class T> T getValue() const noexcept;
 
+    jsonValueType getType() const noexcept;
+    void printType() const noexcept;
+
+    jsonValue& operator[] (const jsonValue& x) const;
     jsonValue& operator= (const jsonValue& right);
     bool operator< (const jsonValue& right) const;
     bool operator== (const jsonValue& right) const;
@@ -48,20 +52,18 @@ public:
     JSON ();
     ~JSON ();
 
-    jsonValue& operator[] (const jsonValue& x) {
-        return obj[x];
-    }
+    jsonValue& operator[] (const jsonValue& x);
 
-    void get_JSON(const std::string& name);
+    void getJSON(const std::string& name);
 
-    void write_jsonValue(const std::string& name, const jsonValue* val_obj);
-    void write_JSON(const std::string& name);
+    void writeJsonValue(const std::string& name, const jsonValue* val_obj);
+    void writeJSON(const std::string& name);
 
-    const std::map<jsonValue, jsonValue>& getObject() const;
+    const std::map<jsonValue, jsonValue>& getObject() const noexcept;
 private:
     std::map<jsonValue, jsonValue> obj;
-    std::string file_name;
-    std::fstream file;
+    inline static std::string file_name;
+    inline static std::fstream file;
 };
 
 
