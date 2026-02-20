@@ -1,19 +1,17 @@
 #include "IIIjson_parser.hpp"
-// #include <boost/spirit/include/qi.hpp>
 #include <iostream>
-// namespace qi = boost::spirit::qi;
+#include <fstream>
 
-
-// class jsonValue 
+// class jsonValue
 // реализация getValue
-template<> 
+template<>
 void* jsonValue::getValue<void*>() const noexcept {
-    return nullptr; 
+    return nullptr;
 }
 
-template<> 
+template<>
 std::string jsonValue::getValue<std::string>() const noexcept {
-    return j1; 
+    return j1;
 }
 
 template<>
@@ -21,28 +19,28 @@ double jsonValue::getValue<double>() const noexcept {
     return j2;
 }
 
-template<> 
+template<>
 int jsonValue::getValue<int>() const noexcept {
-    return j2; 
+    return j2;
 }
 
-template<> 
+template<>
 bool jsonValue::getValue<bool>() const noexcept {
-    return j3; 
+    return j3;
 }
 
-template<> 
+template<>
 std::vector<jsonValue> jsonValue::getValue<std::vector<jsonValue>>() const noexcept {
-    return j4; 
+    return j4;
 }
 
-template<> 
+template<>
 JSON* jsonValue::getValue<JSON*>() const noexcept {
-    return j5; 
+    return j5;
 }
 
 // реализация конструкторов и декструктора
-template<> 
+template<>
 jsonValue::jsonValue<std::string>(const std::string& val) {
     type = string;
     j1 = val;
@@ -54,7 +52,7 @@ jsonValue::jsonValue<double>(const double& val) {
     j2 = val;
 }
 
-template<> 
+template<>
 jsonValue::jsonValue<int>(const int& val) {
     type = number;
     j2 = val;
@@ -66,7 +64,7 @@ jsonValue::jsonValue<bool>(const bool& val) {
     j3 = val;
 }
 
-template<> 
+template<>
 jsonValue::jsonValue<std::vector<jsonValue>>(const std::vector<jsonValue>& val) {
     type = array;
     j4 = val;
@@ -163,16 +161,23 @@ bool jsonValue::operator== (const jsonValue& right) const {
 
 
 // class JSON
-JSON::~JSON () {}
-
 JSON::JSON () {
     file_name = "";
+    file = nullptr;
 }
-JSON::JSON (const std::string& file_name)  {
-    JSON::file_name = file_name;
-    file.open(file_name, std::ios::out | std::ios::in);
-    if (!file.is_open())
+JSON::JSON (const std::string& name)  {
+    file_name = name;
+    file = new std::ofstream;
+    dynamic_cast<std::ofstream*>(file)->open(file_name);
+    if (!dynamic_cast<std::ofstream*>(file)->is_open())
         throw std::runtime_error("JSON file could not be opened");
+}
+
+JSON::~JSON () {
+    if (file) {
+        dynamic_cast<std::ofstream*>(file)->close();
+        delete file;
+    }
 }
 
 jsonValue& JSON::operator[] (const jsonValue& x) {
@@ -182,68 +187,63 @@ jsonValue& JSON::operator[] (const jsonValue& x) {
     return obj[x];
 }
 
-// void JSON::get_JSON(const std::string& name) {
-//     if (!file_name.empty() || name != file_name) {
-//         if (file.is_open())
-//             file.close();
-//
-//         file_name = name;
-//         file.open(name, std::ios::app | std::ios::out | std::ios::in);
-//
-//         if (!file.is_open())
-//             throw std::runtime_error("JSON file could not be opened");
-//     }
-// }
 
 void JSON::writeJsonValue(const std::string& name, const jsonValue* val_obj) {
     if (val_obj->getType() == null)
-        file << "null";
+        *file << "null";
     if (val_obj->getType() == string)
-        file << '"' << val_obj->getValue<std::string>() << '"';
+        *file << '"' << val_obj->getValue<std::string>() << '"';
     if (val_obj->getType() == number)
-        file << val_obj->getValue<double>();
+        *file << val_obj->getValue<double>();
     if (val_obj->getType() == boolean)
-        file << std::boolalpha << val_obj->getValue<bool>();
+        *file << std::boolalpha << val_obj->getValue<bool>();
     if (val_obj->getType() == json)
         val_obj->getValue<JSON*>()->writeJSON(name);
 
     if (val_obj->getType() == array) {
         auto&& o = val_obj->getValue<std::vector<jsonValue>>();
 
-        file << "[ ";
+        *file << "[ ";
         for (auto it = o.begin(); it != o.end(); ++it) {
             writeJsonValue(name, &(*it));
             if (it != o.end()-1)
-                file << ", ";
+                *file << ", ";
         }
-        file << " ]";
+        *file << " ]";
     }
 }
 
 void JSON::writeJSON(const std::string& name) {
-    if (!file_name.empty() || name != file_name) {
-        if (file.is_open())
-            file.close();
+    if (name == "std::cout") {
+        file = &std::cout;
+    } else if (name != file_name) {
+        if (!file)
+            file = new std::ofstream;
+        else if (dynamic_cast<std::ofstream*>(file)->is_open())
+            dynamic_cast<std::ofstream*>(file)->close();
 
         file_name = name;
-        file.open(name, std::ios::app | std::ios::out | std::ios::in);
+        dynamic_cast<std::ofstream*>(file)->open(name);
 
-        if (!file.is_open())
+        if (!dynamic_cast<std::ofstream*>(file)->is_open())
             throw std::runtime_error("JSON file could not be opened");
+
     }
 
-    file << "{\n\t";
+    vloz++;
+    *file << "{\n" << std::string(vloz, '\t');
     for (auto it = obj.begin(); it != obj.end();) {
         writeJsonValue(name, &it->first);
-        file << " : ";
+        *file << " : ";
         writeJsonValue(name, &it->second);
 
         if (++it != obj.end())
-            file << ",\n\t";
-        else
-            file << "\n";
+            *file << ",";
+        *file << "\n" << std::string(vloz, '\t');
     }
-    file << "}";
+    if (!--vloz)
+        *file << "\r";
+    *file << "}";
 }
 
 const std::map<jsonValue, jsonValue>& JSON::getObject() const noexcept {
@@ -252,33 +252,38 @@ const std::map<jsonValue, jsonValue>& JSON::getObject() const noexcept {
 
 
 int main () {
-    JSON example;
+    using qi::phrase_parse;
 
-    example["a"] = false;
-    example["b"] = 12424;
-    example["c"] = "germany";
+    JSON o;
+    jsonParser p{o};
 
-    // настоящая головная боль:
-    example["d"] = std::vector<jsonValue>{123, 143, 154};
-    example["e"] = new JSON;
-    example["e"]["1"] = 20;
-    example["e"]["2"] = new JSON;
-    example["e"]["2"]["v"] = true;
+    std::string s;
+    std::getline(std::cin, s);
+    auto it = s.begin();
+    bool match = phrase_parse(it, s.end(), p, space);
+    std::cout << std::boolalpha << match << std::endl;
+    if (it != s.end()) {
+        std::cout << std::string(it, s.end()) << std::endl;
+    }
 
-
+    // JSON example;
     //
-    // example["d"].printType();
-    // example["c"].printType();
-    // example["e"].printType();
-    // example["e"]["1"].printType();
-    example.writeJSON("./example1.json");
-
-    // std::string s;
-    // std::getline(std::cin, s);
-    // auto it = s.begin();
-    // bool match = qi::parse(it, s.end(), qi::double_);
-    // std::cout << std::boolalpha << match << std::endl;
-    // if (it != s.end()) {
-    //     std::cout << std::string(it, s.end()) << std::endl;
-    // }
+    // example["a"] = false;
+    // example["b"] = 12424;
+    // example["c"] = "germany";
+    //
+    // // настоящая головная боль:
+    // example["d"] = std::vector<jsonValue>{123, 143, 154};
+    // example["e"] = new JSON;
+    // example["e"]["1"] = 20;
+    // example["e"]["2"] = new JSON;
+    // example["e"]["2"]["v"] = true;
+    //
+    //
+    // //
+    // // example["d"].printType();
+    // // example["c"].printType();
+    // // example["e"].printType();
+    // // example["e"]["1"].printType();
+    // example.writeJSON("std::cout");
 }
