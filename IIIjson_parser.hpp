@@ -4,26 +4,13 @@
 #include <string>
 #include <map>
 #include <vector>
-#include <boost/spirit/include/qi.hpp>
-#include <boost/phoenix/phoenix.hpp>
+#include "peglib.h"
 
-namespace ascii = boost::spirit::qi::ascii;
-namespace qi = boost::spirit::qi;
-namespace phoenix = boost::phoenix;
-using phoenix::ref;
-using qi::alnum;
-using qi::char_;
-using qi::lit;
-using qi::double_;
-using ascii::space;
-using qi::lexeme;
-using qi::_1;
-using ascii::space_type;
 
 class JSON;
-class jsonValue;
+class jsonObj;
 
-enum jsonValueType {
+enum jsonType {
     null=1,
     boolean,
     number,
@@ -33,64 +20,35 @@ enum jsonValueType {
     trash_value
 };
 
-
-struct jsonParser : qi::grammar<std::string::iterator, space_type> {
-    jsonParser(JSON& obj) : base_type{json}, obj{obj} {
-        null = lit("null");
-        boolean = lit("true") | lit("false");
-        number = double_;
-        array = char_('[') >> -(value >> *(char_(',') >> value)) >> char_(']');
-
-        key = lexeme[char_('"') >> +alnum >> char_('"')];
-        value = json | array | key | number | boolean | null;
-
-        jsonObj = key >> char_(':') >> value;
-        json = char_('{') >> -(jsonObj >> *(char_(',') >> jsonObj)) >> char_('}');
-    }
-
-    JSON& obj;
-    // qi::rule<std::string::iterator, JSON(), space_type> json;
-    // qi::rule<std::string::iterator, std::pair<jsonValue, jsonValue>(), space_type> jsonObj;
-    //
-    // qi::rule<std::string::iterator, jsonValue(), space_type> value;
-    // qi::rule<std::string::iterator, jsonValue(), space_type> key;
-    //
-    // qi::rule<std::string::iterator, jsonValue(), space_type> array;
-    qi::rule<std::string::iterator, jsonValue(), space_type> number;
-    qi::rule<std::string::iterator, jsonValue(), space_type> boolean;
-    qi::rule<std::string::iterator, jsonValue(), space_type> null;
-
-    qi::rule<std::string::iterator, space_type> json;
-    qi::rule<std::string::iterator, space_type> jsonObj;
-
-    qi::rule<std::string::iterator, space_type> value;
-    qi::rule<std::string::iterator, space_type> key;
-
-    qi::rule<std::string::iterator, space_type> array;
-};
-
-class jsonValue {
+class jsonObj {
 public:
-    jsonValue() : type(trash_value) {}
-    jsonValue(const char* val);
-    jsonValue(JSON* val);
-    template<class T> jsonValue(const T& val);
+    jsonObj() : type(trash_value) {}
+    jsonObj(std::nullptr_t) : type(null) {}
+    jsonObj(const double& val);
+    jsonObj(const int& val);
+    jsonObj(const std::string& val);
+    jsonObj(const char* val);
+    jsonObj(const char& val);
+    jsonObj(const bool& val);
+    jsonObj(const std::vector<jsonObj>& val);
+    jsonObj(JSON* val);
+    // template<class T> jsonObj(const T& val);
 
     template<class T> T getValue() const noexcept;
-    jsonValueType getType() const noexcept;
+    jsonType getType() const noexcept;
 
     void printType() const noexcept;
 
-    jsonValue& operator[] (const jsonValue& x) const;
-    jsonValue& operator= (const jsonValue& right);
-    bool operator< (const jsonValue& right) const;
-    bool operator== (const jsonValue& right) const;
+    jsonObj& operator[] (const jsonObj& x) const;
+    jsonObj& operator= (const jsonObj& right);
+    bool operator< (const jsonObj& right) const;
+    bool operator== (const jsonObj& right) const;
 private:
-    jsonValueType         type;
+    jsonType              type;
     std::string             j1;
     double                  j2;
     bool                    j3;
-    std::vector<jsonValue>  j4;
+    std::vector<jsonObj>    j4;
     JSON*                   j5;
 };
 
@@ -100,21 +58,98 @@ public:
     JSON ();
     ~JSON ();
 
-    jsonValue& operator[] (const jsonValue& x);
+    jsonObj& operator[] (const jsonObj& x);
 
     void getJSON();
 
-    void writeJsonValue(const std::string& name, const jsonValue* val_obj);
+    void writeJsonValue(const std::string& name, const jsonObj* val_obj);
     void writeJSON(const std::string& name);
 
-    const std::map<jsonValue, jsonValue>& getObject() const noexcept;
+    const std::map<jsonObj, jsonObj>& getObject() const noexcept;
 private:
-    std::map<jsonValue, jsonValue> obj;
+    std::map<jsonObj, jsonObj> obj;
 
     inline static std::string file_name;
     inline static std::ostream* file;
     inline static int vloz = 0;
 };
 
+struct jsonParser {
+    jsonParser () {
+          peg::parser p(R"(
 
-#endif 
+               json        <- '{' ' '* jsonObj? (' '* ',' ' '* jsonObj ' '*)* '}'
+               jsonObj     <- ' '* key ' '* ':' ' '* value ' '*
+               value       <- null / bool / key / number / array / json
+               key         <- '"' char* '"'
+               char        <- [a-zA-Z0-9_ ]
+               array       <- '[' ' '* value? (' '* ',' ' '* value ' '*)* ']'
+               number      <- [+-]?[0-9]+([.][0-9]+)?
+               bool        <- 'true' / 'false'
+               null        <- 'null'
+
+           )");
+
+        p["null"] = [](const peg::SemanticValues &vs) {
+            return jsonObj(nullptr);
+        };
+
+        p["bool"] = [](const peg::SemanticValues &vs) {
+            switch (vs.choice()) {
+                case 0:  return jsonObj(true);
+                default: return jsonObj(false);
+            }
+        };
+
+        p["number"] = [](const peg::SemanticValues &vs) {
+            return jsonObj(vs.token_to_number<double>());
+        };
+
+        p["array"] = [](const peg::SemanticValues &vs) {
+            std::vector<jsonObj> x;
+            for (auto& el : vs)
+                x.push_back(std::any_cast<jsonObj>(el));
+            return jsonObj(x);
+        };
+
+        p["char"] = [](const peg::SemanticValues &vs) {
+            return any_cast<std::string>(vs.token_to_string());
+        };
+
+        p["key"] = [](const peg::SemanticValues &vs) {
+            std::string x;
+            for (auto& el : vs) {
+                auto tmp = any_cast<std::string>(el);
+                if (tmp[0] != '"')
+                    x += tmp;
+            }
+            return jsonObj(x);
+        };
+
+        p["value"] = [](const peg::SemanticValues &vs) {
+            return any_cast<jsonObj>(vs[0]);
+        };
+
+        p["jsonObj"] = [](const peg::SemanticValues &vs) {
+            return std::pair{std::any_cast<jsonObj>(vs[0]), std::any_cast<jsonObj>(vs[1])};
+        };
+
+        p["json"] = [](const peg::SemanticValues &vs) {
+            auto x = new JSON;
+            for (auto& el : vs) {
+                auto pr = any_cast<std::pair<jsonObj, jsonObj>>(el);
+                x->operator[](pr.first) = pr.second;
+            }
+            return jsonObj(x);
+        };
+
+        p.set_logger([](size_t line, size_t col, const std::string& msg) {
+            printf("Error on line %zi:%zi -> %s\n", line, col, msg.c_str());
+        });
+
+        parser = p;
+    }
+    peg::parser parser;
+};
+
+#endif
