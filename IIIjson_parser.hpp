@@ -1,9 +1,11 @@
 #ifndef IIIJSON_PARSER_HPP
 #define IIIJSON_PARSER_HPP
 
+#include <fstream>
 #include <string>
 #include <map>
 #include <vector>
+
 #include "peglib.h"
 
 
@@ -32,7 +34,7 @@ public:
     jsonObj(const bool& val);
     jsonObj(const std::vector<jsonObj>& val);
     jsonObj(JSON* val);
-    // template<class T> jsonObj(const T& val);
+    jsonObj(const std::initializer_list<jsonObj>& x);
 
     template<class T> T getValue() const noexcept;
     jsonType getType() const noexcept;
@@ -54,23 +56,28 @@ private:
 
 class JSON {
 public:
-    JSON (const std::string& name);
     JSON ();
-    ~JSON ();
+    JSON (const std::string& name);
+    JSON (const std::initializer_list<std::pair<jsonObj, jsonObj>>& x);
 
+    JSON& operator= (const JSON& other) noexcept {
+        this->obj = std::move(other.obj);
+        return *this;
+    }
     jsonObj& operator[] (const jsonObj& x);
 
-    void getJSON();
-
-    void writeJsonValue(const std::string& name, const jsonObj* val_obj);
+    JSON* getJSON(const std::string& name);
     void writeJSON(const std::string& name);
 
     const std::map<jsonObj, jsonObj>& getObject() const noexcept;
 private:
+    void writeJsonValue(const std::string& name, const jsonObj* val_obj);
+
     std::map<jsonObj, jsonObj> obj;
 
+    std::ifstream file_i;
     inline static std::string file_name;
-    inline static std::ostream* file;
+    inline static std::ostream* file_o;
     inline static int vloz = 0;
 };
 

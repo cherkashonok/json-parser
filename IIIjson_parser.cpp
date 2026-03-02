@@ -1,6 +1,7 @@
-#include "IIIjson_parser.hpp"
 #include <iostream>
-#include <fstream>
+#include <algorithm>
+
+#include "IIIjson_parser.hpp"
 
 
 // class jsonValue
@@ -79,6 +80,11 @@ jsonObj::jsonObj(const std::vector<jsonObj>& val) {
 jsonObj::jsonObj(JSON* val) {
     type = json;
     j5 = val;
+}
+
+jsonObj::jsonObj(const std::initializer_list<jsonObj>& x) {
+    type = array;
+    j4 = x;
 }
 
 // остальной функционал jsonValue
@@ -164,20 +170,18 @@ bool jsonObj::operator== (const jsonObj& right) const {
 // class JSON
 JSON::JSON () {
     file_name = "";
-    file = nullptr;
-}
-JSON::JSON (const std::string& name)  {
-    file_name = name;
-    file = new std::ofstream;
-    dynamic_cast<std::ofstream*>(file)->open(file_name);
-    if (!dynamic_cast<std::ofstream*>(file)->is_open())
-        throw std::runtime_error("JSON file could not be opened");
+    file_o = nullptr;
 }
 
-JSON::~JSON () {
-    if (file) {
-        dynamic_cast<std::ofstream*>(file)->close();
-        delete file;
+JSON::JSON (const std::string& name) : JSON() {
+    file_name = name;
+}
+
+JSON::JSON (const std::initializer_list<std::pair<jsonObj, jsonObj>>& x) : JSON() {
+    for (auto& el : x) {
+        if (el.first.getType() != string)
+            throw std::invalid_argument("key must be a string");
+        obj.insert(el);
     }
 }
 
@@ -188,63 +192,87 @@ jsonObj& JSON::operator[] (const jsonObj& x) {
     return obj[x];
 }
 
+JSON* JSON::getJSON(const std::string& name=file_name) {
+    std::string tmp;
+    if (name == "std::cin") {
+        std::getline(std::cin, tmp);
+    } else {
+        file_i.open(name);
+        if (!file_i.is_open())
+            throw std::runtime_error("JSON file could not be opened");
+
+        std::string tmp_tmp;
+        while (std::getline(file_i, tmp_tmp))
+            tmp += tmp_tmp;
+
+        file_i.close();
+    }
+
+    auto e = std::remove_if(tmp.begin(), tmp.end(), [](char c){ return c == '\n' || c == '\r'; });
+    tmp.erase(e, tmp.end());
+
+    jsonObj j_tmp;
+    JSON* x = nullptr;
+    if (const jsonParser p; p.parser.parse(tmp, j_tmp))
+        x = j_tmp.getValue<JSON*>();
+    return x;
+}
 
 void JSON::writeJsonValue(const std::string& name, const jsonObj* val_obj) {
     if (val_obj->getType() == null)
-        *file << "null";
+        *file_o << "null";
     if (val_obj->getType() == string)
-        *file << '"' << val_obj->getValue<std::string>() << '"';
+        *file_o << '"' << val_obj->getValue<std::string>() << '"';
     if (val_obj->getType() == number)
-        *file << val_obj->getValue<double>();
+        *file_o << val_obj->getValue<double>();
     if (val_obj->getType() == boolean)
-        *file << std::boolalpha << val_obj->getValue<bool>();
+        *file_o << std::boolalpha << val_obj->getValue<bool>();
     if (val_obj->getType() == json)
         val_obj->getValue<JSON*>()->writeJSON(name);
 
     if (val_obj->getType() == array) {
         auto&& o = val_obj->getValue<std::vector<jsonObj>>();
 
-        *file << "[ ";
+        *file_o << "[ ";
         for (auto it = o.begin(); it != o.end(); ++it) {
             writeJsonValue(name, &(*it));
             if (it != o.end()-1)
-                *file << ", ";
+                *file_o << ", ";
         }
-        *file << " ]";
+        *file_o << " ]";
     }
 }
 
-void JSON::writeJSON(const std::string& name) {
+void JSON::writeJSON(const std::string& name=file_name) {
     if (name == "std::cout") {
-        file = &std::cout;
-    } else if (name != file_name) {
-        if (!file)
-            file = new std::ofstream;
-        else if (dynamic_cast<std::ofstream*>(file)->is_open())
-            dynamic_cast<std::ofstream*>(file)->close();
-
-        file_name = name;
-        dynamic_cast<std::ofstream*>(file)->open(name);
-
-        if (!dynamic_cast<std::ofstream*>(file)->is_open())
+        file_o = &std::cout;
+    } else if (!vloz) {
+        file_o = new std::ofstream;
+        dynamic_cast<std::ofstream*>(file_o)->open(name);
+        if (!dynamic_cast<std::ofstream*>(file_o)->is_open())
             throw std::runtime_error("JSON file could not be opened");
-
     }
 
     vloz++;
-    *file << "{\n" << std::string(vloz, '\t');
+    *file_o << "{\n" << std::string(vloz, '\t');
     for (auto it = obj.begin(); it != obj.end();) {
         writeJsonValue(name, &it->first);
-        *file << " : ";
+        *file_o << " : ";
         writeJsonValue(name, &it->second);
 
         if (++it != obj.end())
-            *file << ",";
-        *file << "\n" << std::string(vloz, '\t');
+            *file_o << ",";
+        *file_o << "\n" << std::string(vloz, '\t');
     }
     if (!--vloz)
-        *file << "\r";
-    *file << "}\n";
+        *file_o << "\r";
+    *file_o << "}\n";
+
+    if (name != "std::cout" && !vloz) {
+        dynamic_cast<std::ofstream*>(file_o)->close();
+        delete file_o;
+        file_o = nullptr;
+    }
 }
 
 const std::map<jsonObj, jsonObj>& JSON::getObject() const noexcept {
@@ -253,34 +281,28 @@ const std::map<jsonObj, jsonObj>& JSON::getObject() const noexcept {
 
 
 int main () {
-    jsonObj o;
-    std::string input;
-    std::getline(std::cin, input);
-    if (const jsonParser p; p.parser.parse(input, o)) {
-        auto x = o.getValue<JSON*>();
-        x->writeJSON("std::cout");
-        delete x;
-    }
+    JSON example;
 
-    // работает с крашами
-    // JSON example;
-    //
-    // example["a"] = false;
-    // example["b"] = 12424;
-    // example["c"] = "germany";
-    //
-    // // настоящая головная боль:
-    // example["d"] = std::vector<jsonObj>{123, 143, 154};
-    // example["e"] = new JSON;
-    // example["e"]["1"] = 20;
-    // example["e"]["2"] = new JSON;
-    // example["e"]["2"]["v"] = true;
-    //
-    //
-    // //
-    // // example["d"].printType();
-    // // example["c"].printType();
-    // // example["e"].printType();
-    // // example["e"]["1"].printType();
-    // example.writeJSON("std::cout");
+    example["e"] = new JSON{ {"a1", 20}, {"a2", true} };
+    example["d"] = {123, 143, 154};
+    example["c"] = "germany";
+    example["b"] = 12424;
+    example["a"] = false;
+    example["a0"] = nullptr;
+    example.writeJSON("std::cout");
+    example.writeJSON("example1.json");
+
+    JSON f = {
+        {"b3", {123, true, false, true, nullptr}},
+        {"b4", new JSON{{"c", {1, 2, 3, 4, 5}}}},
+        {"b2", 2142152.214323},
+        {"b1", 124}
+    };
+    f.writeJSON("std::cout");
+    f.writeJSON("example2.json");
+
+
+    JSON e;
+    e = *e.getJSON("example3.json");
+    e.writeJSON("std::cout");
 }

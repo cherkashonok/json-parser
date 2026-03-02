@@ -14,4 +14,4 @@ file(GLOB MY_SOURCE "${CMAKE_SOURCE_DIR}/*.cpp")
 
 add_executable(main ${MY_SOURCE})
 
-#target_link_libraries(main foonathan::lexy)
+#target_link_libraries(main )
